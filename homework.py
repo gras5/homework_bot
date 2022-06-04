@@ -35,10 +35,7 @@ HOMEWORK_STATUSES = {
 
 
 def send_message(bot: telegram.Bot, message: str):
-    '''
-    Отправляет сообщение в чат Telegram
-    '''
-
+    """Отправляет сообщение в чат Telegram"""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
@@ -52,12 +49,8 @@ def send_message(bot: telegram.Bot, message: str):
 
 
 def get_api_answer(current_timestamp: int) -> dict:
-    '''
-    Делает запрос к API с использованием временной метки
-    '''
-
+    """Делает запрос к API с использованием временной метки"""
     timestamp = current_timestamp or int(time.time())
-    # timestamp = 0
     headers = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
     params = {'from_date': timestamp}
 
@@ -79,10 +72,7 @@ def get_api_answer(current_timestamp: int) -> dict:
 
 
 def check_response(response: dict):
-    '''
-    Проверяет полученный ответ от API на корректность
-    '''
-
+    """Проверяет полученный ответ от API на корректность"""
     homeworks = response['homeworks']
     homeworks_type = type(homeworks)
 
@@ -95,10 +85,7 @@ def check_response(response: dict):
 
 
 def parse_status(homework: dict) -> str:
-    '''
-    Извлекает из запроса имя и статус из записи домашней работы
-    '''
-
+    """Извлекает из запроса имя и статус из записи домашней работы"""
     homework_name = homework.get('homework_name')
     homework_status = homework.get('status')
 
@@ -115,10 +102,7 @@ def parse_status(homework: dict) -> str:
 
 
 def check_tokens() -> bool:
-    '''
-    Проверяет доступность переменных окружения для запуска бота
-    '''
-
+    """Проверяет доступность переменных окружения для запуска бота"""
     env_vars = (
         ('PRACTICUM_TOKEN', PRACTICUM_TOKEN),
         ('TELEGRAM_TOKEN', TELEGRAM_TOKEN),
@@ -138,7 +122,6 @@ def check_tokens() -> bool:
 
 def main():
     """Основная логика работы бота."""
-
     check_tokens()
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
