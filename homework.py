@@ -2,13 +2,15 @@ import logging
 import os
 import sys
 import time
-import traceback
 from http import HTTPStatus
 
 import requests
 import telegram
 from dotenv import load_dotenv
 from telegram.error import TelegramError
+
+from exceptions import (RequestError, ResponseJsonDecodeError,
+                        ResponseStatusOkError)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -32,7 +34,7 @@ ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
 
-HOMEWORK_STATUSES = {
+HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
@@ -43,12 +45,10 @@ def send_message(bot: telegram.Bot, message: str):
     """Отправляет сообщение в чат Telegram."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-    except TelegramError as error:
-        t, m, tr = sys.exc_info()
+    except TelegramError:
         logger.error(
-            f'Произошла ошибка при отправке сообщения: {message}\n'
-            f'Текст сообщения: {error} \n'
-            f'Отчет трассировки: {traceback.print_tb(tr)}'
+            f'Произошла ошибка при отправке сообщения: {message}\n',
+            exc_info=True
         )
     else:
         logger.info(
@@ -63,14 +63,14 @@ def get_api_answer(current_timestamp: int) -> dict:
 
     try:
         response = requests.get(ENDPOINT, headers=headers, params=params)
-    except ConnectionError as error:
-        raise ConnectionError(
+    except requests.exceptions.RequestException as error:
+        raise RequestError(
             f'Эндпоинт {ENDPOINT} недоступен. '
             f'Cообщение с ошибкой: {error}'
         ) from error
 
     if response.status_code != HTTPStatus.OK:
-        raise Exception(
+        raise ResponseStatusOkError(
             f'Эндпоинт {ENDPOINT} вернул неожиданный status_code. '
             f'Код ответа API: {response.status_code}'
         )
@@ -78,7 +78,7 @@ def get_api_answer(current_timestamp: int) -> dict:
     try:
         return response.json()
     except requests.exceptions.JSONDecodeError as error:
-        raise requests.exceptions.JSONDecodeError(
+        raise ResponseJsonDecodeError(
             'Произошла ошибка при декодировании response из json в тип Python'
         ) from error
 
@@ -91,12 +91,11 @@ def check_response(response: dict):
             f'Полученный тип: {type(response)}'
         )
 
-    try:
-        homeworks = response['homeworks']
-    except KeyError as error:
+    homeworks = response.get('homeworks')
+    if not homeworks:
         raise KeyError(
-            f'Словарь response не содержит пары с ключом: {error}'
-        ) from error
+            'Словарь response не содержит пары с ключом: homeworks'
+        )
 
     if not isinstance(homeworks, list):
         raise TypeError(
@@ -108,20 +107,25 @@ def check_response(response: dict):
 
 def parse_status(homework: dict) -> str:
     """Извлекает из запроса имя и статус из записи домашней работы."""
-    try:
-        homework_name = homework['homework_name']
-        homework_status = homework['status']
-    except KeyError as error:
-        raise KeyError(
-            f'Объект homework не содержит ключа: {error}'
-        ) from error
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
 
-    if homework_status not in HOMEWORK_STATUSES:
+    if not homework_name:
+        raise KeyError(
+            'Объект homework не содержит ключа: homework_name'
+        )
+
+    if not homework_status:
+        raise KeyError(
+            'Объект homework не содержит ключа: homework_status'
+        )
+
+    if homework_status not in HOMEWORK_VERDICTS:
         raise KeyError(
             f'API вернул неизвестный статус домашней работы: {homework_status}'
         )
 
-    verdict = HOMEWORK_STATUSES[homework_status]
+    verdict = HOMEWORK_VERDICTS[homework_status]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -134,9 +138,9 @@ def check_tokens() -> bool:
     )
 
     tokens_exists = all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
-    env_none_vars = list(filter(lambda env_var: not env_var[1], env_vars))
 
     if not tokens_exists:
+        env_none_vars = list(filter(lambda env_var: not env_var[1], env_vars))
         logger.critical(
             'Отсутствует обязательная переменная '
             f'окружения: {env_none_vars}'
@@ -166,12 +170,18 @@ def main():
                 message_text = parse_status(homeworks[0])
                 send_message(bot, message_text)
             else:
-                logger.info(
+                logger.debug(
                     'Полученный ответ не содержит '
                     'новых статусов домашних работ.'
                 )
 
-            current_timestamp = response['current_date']
+            current_timestamp = response.get(
+                'current_date') or int(time.time())
+
+            if not isinstance(current_timestamp, int):
+                logger.error(
+                    'Словарь response не содержит пары с ключом: homeworks'
+                )
         except Exception as error:
             error_message = f'Сбой в работе программы: {error}'
 
