@@ -8,3 +8,7 @@ class ResponseStatusOkError(Exception):
 
 class RequestError(Exception):
     pass
+
+
+class TelegramBotError(Exception):
+    pass

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from telegram.error import TelegramError
 
 from exceptions import (RequestError, ResponseJsonDecodeError,
-                        ResponseStatusOkError)
+                        ResponseStatusOkError, TelegramBotError)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -45,11 +45,10 @@ def send_message(bot: telegram.Bot, message: str):
     """Отправляет сообщение в чат Telegram."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-    except TelegramError:
-        logger.error(
-            f'Произошла ошибка при отправке сообщения: {message}\n',
-            exc_info=True
-        )
+    except TelegramError as error:
+        raise TelegramBotError(
+            f'Произошла ошибка при отправке сообщения: {message}\n'
+        ) from error
     else:
         logger.info(
             f'Бот отправил сообщение: {message}'
@@ -97,6 +96,11 @@ def check_response(response: dict):
             'Словарь response не содержит пары с ключом: homeworks'
         )
 
+    if 'current_date' not in response:
+        logger.error(
+            'Словарь response не содержит пары с ключом: current_date'
+        )
+
     if not isinstance(homeworks, list):
         raise TypeError(
             f'Неожиданный тип данных в списке домашек: {type(homeworks)}'
@@ -113,11 +117,6 @@ def parse_status(homework: dict) -> str:
     if not homework_name:
         raise KeyError(
             'Объект homework не содержит ключа: homework_name'
-        )
-
-    if not homework_status:
-        raise KeyError(
-            'Объект homework не содержит ключа: homework_status'
         )
 
     if homework_status not in HOMEWORK_VERDICTS:
@@ -166,7 +165,7 @@ def main():
             response = get_api_answer(current_timestamp)
 
             homeworks = check_response(response)
-            if homeworks:
+            if len(homeworks) > 0:
                 message_text = parse_status(homeworks[0])
                 send_message(bot, message_text)
             else:
@@ -175,17 +174,21 @@ def main():
                     'новых статусов домашних работ.'
                 )
 
-            current_timestamp = response.get(
-                'current_date') or int(time.time())
+            current_date = response.get('current_date')
 
-            if not isinstance(current_timestamp, int):
-                logger.error(
-                    'Словарь response не содержит пары с ключом: homeworks'
-                )
-        except Exception as error:
+            if isinstance(current_date, int):
+                current_timestamp = current_date
+        except TelegramBotError as error:
+            logger.error(error, exc_info=True)
+        except (
+                KeyError,
+                TypeError,
+                RequestError,
+                ResponseStatusOkError,
+                ResponseJsonDecodeError) as error:
             error_message = f'Сбой в работе программы: {error}'
-
             logger.error(error_message)
+
             if cached_error_message != error_message:
                 send_message(bot, error_message)
                 cached_error_message = error_message
