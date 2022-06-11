@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 from telegram.error import TelegramError
 
 from exceptions import (RequestError, ResponseJsonDecodeError,
-                        ResponseStatusOkError, TelegramBotError)
+                        ResponseDateKeyError, ResponseStatusOkError,
+                        TelegramBotError)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -65,12 +66,14 @@ def get_api_answer(current_timestamp: int) -> dict:
     except requests.exceptions.RequestException as error:
         raise RequestError(
             f'Эндпоинт {ENDPOINT} недоступен. '
+            f'Переданные параметры: {params} '
             f'Cообщение с ошибкой: {error}'
         ) from error
 
     if response.status_code != HTTPStatus.OK:
         raise ResponseStatusOkError(
             f'Эндпоинт {ENDPOINT} вернул неожиданный status_code. '
+            f'Переданные параметры: {params} '
             f'Код ответа API: {response.status_code}'
         )
 
@@ -90,14 +93,15 @@ def check_response(response: dict):
             f'Полученный тип: {type(response)}'
         )
 
-    homeworks = response.get('homeworks')
-    if not homeworks:
+    if 'homeworks' not in response:
         raise KeyError(
             'Словарь response не содержит пары с ключом: homeworks'
         )
 
+    homeworks = response.get('homeworks')
+
     if 'current_date' not in response:
-        logger.error(
+        raise ResponseDateKeyError(
             'Словарь response не содержит пары с ключом: current_date'
         )
 
@@ -163,8 +167,8 @@ def main():
     while True:
         try:
             response = get_api_answer(current_timestamp)
-
             homeworks = check_response(response)
+
             if len(homeworks) > 0:
                 message_text = parse_status(homeworks[0])
                 send_message(bot, message_text)
@@ -178,14 +182,15 @@ def main():
 
             if isinstance(current_date, int):
                 current_timestamp = current_date
-        except TelegramBotError as error:
+        except (TelegramBotError, ResponseDateKeyError) as error:
             logger.error(error, exc_info=True)
-        except (
-                KeyError,
-                TypeError,
-                RequestError,
-                ResponseStatusOkError,
-                ResponseJsonDecodeError) as error:
+        # except (
+        #         KeyError,
+        #         TypeError,
+        #         RequestError,
+        #         ResponseStatusOkError,
+        #         ResponseJsonDecodeError) as error:
+        except Exception as error:
             error_message = f'Сбой в работе программы: {error}'
             logger.error(error_message)
 

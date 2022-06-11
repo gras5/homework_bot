@@ -6,6 +6,10 @@ class ResponseStatusOkError(Exception):
     pass
 
 
+class ResponseDateKeyError(Exception):
+    pass
+
+
 class RequestError(Exception):
     pass
 
