@@ -184,12 +184,6 @@ def main():
                 current_timestamp = current_date
         except (TelegramBotError, ResponseDateKeyError) as error:
             logger.error(error, exc_info=True)
-        # except (
-        #         KeyError,
-        #         TypeError,
-        #         RequestError,
-        #         ResponseStatusOkError,
-        #         ResponseJsonDecodeError) as error:
         except Exception as error:
             error_message = f'Сбой в работе программы: {error}'
             logger.error(error_message)
